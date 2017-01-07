@@ -185,9 +185,9 @@ uint8_t OneWire::read_bit(void)
 
     wire.output();
     wire = 0;
-    wait_us(1);
+    //wait_us(1);
     wire.input();
-    wait_us(6);
+    wait_us(5);
     r = wire.read();
     wait_us(54);
     return r;
