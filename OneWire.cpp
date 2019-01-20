@@ -185,10 +185,12 @@ uint8_t OneWire::read_bit(void)
 
     wire.output();
     wire = 0;
-    //wait_us(1);
+    timer.start();
     wire.input();
-    wait_us(5);
+    wait_us(12 - timer.read_us());
     r = wire.read();
+    timer.stop();
+    timer.reset();
     wait_us(54);
     return r;
 }
@@ -451,3 +453,4 @@ uint8_t OneWire::crc8(const uint8_t *addr, uint8_t len)
     return crc;
 }
 #endif
+

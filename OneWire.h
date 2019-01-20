@@ -28,6 +28,7 @@ class OneWire
 {
   private:
     DigitalInOut    wire;
+    Timer           timer;
 
 #if ONEWIRE_SEARCH
     // global search state
