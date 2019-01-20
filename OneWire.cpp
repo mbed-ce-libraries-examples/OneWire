@@ -118,7 +118,10 @@ sample code bearing this copyright.
 
 OneWire::OneWire(PinName pin):
     wire(pin)
-{   
+{
+    wire.mode(PullUp);
+    timer.stop();
+    timer.reset();
 #if ONEWIRE_SEARCH
     reset_search();
 #endif
@@ -182,12 +185,15 @@ void OneWire::write_bit(uint8_t v)
 uint8_t OneWire::read_bit(void)
 {
     uint8_t r;
+    int     t;
 
     wire.output();
     wire = 0;
     timer.start();
     wire.input();
-    wait_us(12 - timer.read_us());
+    t = timer.read_us();
+    if (t < 10)
+        wait_us(10 - t);
     r = wire.read();
     timer.stop();
     timer.reset();
