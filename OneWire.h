@@ -24,11 +24,9 @@
 #define ONEWIRE_CRC 1
 #endif
 
-class OneWire
+class OneWire : public DigitalInOut
 {
-  private:
-    DigitalInOut    wire;
-    Timer           timer;
+    Timer timer;
 
 #if ONEWIRE_SEARCH
     // global search state
@@ -38,7 +36,7 @@ class OneWire
     uint8_t LastDeviceFlag;
 #endif
 
-  public:
+public:
     OneWire(PinName pin);
 
     // Perform a 1-Wire reset cycle. Returns 1 if a device responds
@@ -56,12 +54,12 @@ class OneWire
     // the end for parasitically powered devices. You are responsible
     // for eventually depowering it by calling depower() or doing
     // another read or write.
-    void write(uint8_t v, uint8_t power = 0);
+    void write_byte(uint8_t v, uint8_t power = 0);
 
     void write_bytes(const uint8_t *buf, uint16_t count, bool power = 0);
 
     // Read a byte.
-    uint8_t read(void);
+    uint8_t read_byte(void);
 
     void read_bytes(uint8_t *buf, uint16_t count);
 
@@ -142,3 +140,5 @@ class OneWire
 };
 
 #endif
+
+            

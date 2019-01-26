@@ -2,12 +2,12 @@
 Copyright (c) 2007, Jim Studt  (original old version - many contributors since)
 
 The latest version of this library may be found at:
-  http://www.pjrc.com/teensy/td_libs_OneWire.html
+  http://www.pjrc.com/teensy/td_libs_Onehtml
 
 OneWire has been maintained by Paul Stoffregen (paul@pjrc.com) since
 January 2010.  At the time, it was in need of many bug fixes, but had
 been abandoned the original author (Jim Studt).  None of the known
-contributors were interested in maintaining OneWire.  Paul typically
+contributors were interested in maintaining One  Paul typically
 works on OneWire every 6 to 12 months.  Patches usually wait that
 long.  If anyone is interested in more actively maintaining OneWire,
 please contact Paul.
@@ -35,7 +35,7 @@ Version 2.1:
   Delete very old, out-of-date readme file (info is here)
 
 Version 2.0: Modifications by Paul Stoffregen, January 2010:
-http://www.pjrc.com/teensy/td_libs_OneWire.html
+http://www.pjrc.com/teensy/td_libs_Onehtml
   Search fix from Robin James
     http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1238032295/27#27
   Use direct optimized I/O in all cases
@@ -115,6 +115,20 @@ sample code bearing this copyright.
 */
 #include "OneWire.h"
 
+#if defined(TARGET_STM)
+    #define MODE()      mode(OpenDrain)
+    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
+    #define OUTPUT()    // configured as output in the constructor and stays output forever
+    #define READ()      ((*gpio.reg_in & gpio.mask) ? 1 : 0)
+    #define WRITE(x)    write(x)
+#else
+    #define MODE()      mode(PullUp)
+    #define INPUT()     input()
+    #define OUTPUT()    output()
+    #define READ()      read()
+    #define WRITE(x)    write(x)
+#endif
+
 /**
  * @brief
  * @note
@@ -122,15 +136,12 @@ sample code bearing this copyright.
  * @retval
  */
 OneWire::OneWire(PinName pin) :
-    wire(pin)
+    DigitalInOut(pin)
 {
     timer.stop();
     timer.reset();
-#if defined(TARGET_STM)
-    wire.mode(OpenDrain);
-#else
-    wire.mode(PullUp);
-#endif
+    output();   // configure as output
+    MODE();     // set mode PullUp/OpenDrain
 #if ONEWIRE_SEARCH
     reset_search();
 #endif
@@ -148,32 +159,21 @@ uint8_t OneWire::reset(void)
     uint8_t r;
     uint8_t retries = 125;
 
-#if defined(TARGET_STM)
-    wire = 1;
-#else
-    wire.input();
-#endif
+    INPUT();
     // wait until the wire is high... just in case
-
     do {
-        if (--retries == 0) {
+        if (--retries == 0)
             return 0;
-        }
-
         wait_us(2);
-    } while (wire.read() != 1);
+    } while (READ() != 1);
 
-    wire.output();
-    wire = 0;
+    OUTPUT();
+    WRITE(0);
     wait_us(480);
-#if defined(TARGET_STM)
-    wire = 1;
-#else
-    wire.input();
-#endif
-    wait_us(70);
-    r = !wire.read();
-    wait_us(410);
+    INPUT();
+    wait_us(65);
+    r = !READ();
+    wait_us(420);
     return r;
 }
 
@@ -184,20 +184,18 @@ uint8_t OneWire::reset(void)
 //
 void OneWire::write_bit(uint8_t v)
 {
-#if !defined(TARGET_STM)
-    wire.output();
-#endif
+    OUTPUT();
     if (v & 1) {
-        wire = 0;   // drive output low
-        wait_us(10);
-        wire = 1;   // drive output high
-        wait_us(55);
+        WRITE(0);   // drive output low
+        wait_us(1);
+        WRITE(1);   // drive output high
+        wait_us(60);
     }
     else {
-        wire = 0;   // drive output low
-        wait_us(65);
-        wire = 1;   // drive output high
-        wait_us(5);
+        WRITE(0);   // drive output low
+        wait_us(60);
+        WRITE(1);   // drive output high
+        wait_us(1);
     }
 }
 
@@ -211,23 +209,18 @@ uint8_t OneWire::read_bit(void)
     uint8_t r;
     int     t;
 
-#if !defined(TARGET_STM)
-    wire.output();
-#endif
-    wire = 0;
+    OUTPUT();
+    WRITE(0);
     timer.start();
-#if defined(TARGET_STM)
-    wire = 1;
-#else
-    wire.input();
-#endif
+    INPUT();
     t = timer.read_us();
     if (t < 7)
         wait_us(7 - t);
-    r = wire.read();
+    timer.reset();
+    r = READ();
     timer.stop();
     timer.reset();
-    wait_us(54);
+    wait_us(55);
     return r;
 }
 
@@ -239,22 +232,14 @@ uint8_t OneWire::read_bit(void)
 // other mishap.
 
 //
-void OneWire::write(uint8_t v, uint8_t power /* = 0 */ )
+void OneWire::write_byte(uint8_t v, uint8_t power /* = 0 */ )
 {
     uint8_t bitMask;
 
-    for (bitMask = 0x01; bitMask; bitMask <<= 1) {
-        OneWire::write_bit((bitMask & v) ? 1 : 0);
-    }
-
+    for (bitMask = 0x01; bitMask; bitMask <<= 1)
+        write_bit((bitMask & v) ? 1 : 0);
     if (!power)
-    {
-#if defined(TARGET_STM)
-        wire = 1;
-#else
-        wire.input();
-#endif
-    }
+        INPUT();
 }
 
 /**
@@ -266,28 +251,22 @@ void OneWire::write(uint8_t v, uint8_t power /* = 0 */ )
 void OneWire::write_bytes(const uint8_t* buf, uint16_t count, bool power /* = 0 */ )
 {
     for (uint16_t i = 0; i < count; i++)
-        write(buf[i]);
+        write_byte(buf[i]);
     if (!power)
-    {
-#if defined(TARGET_STM)
-        wire = 1;
-#else
-        wire.input();
-#endif
-    }
+        INPUT();
 }
 
 //
 // Read a byte
 
 //
-uint8_t OneWire::read()
+uint8_t OneWire::read_byte()
 {
     uint8_t bitMask;
     uint8_t r = 0;
 
     for (bitMask = 0x01; bitMask; bitMask <<= 1) {
-        if (OneWire::read_bit())
+        if (read_bit())
             r |= bitMask;
     }
 
@@ -303,7 +282,7 @@ uint8_t OneWire::read()
 void OneWire::read_bytes(uint8_t* buf, uint16_t count)
 {
     for (uint16_t i = 0; i < count; i++)
-        buf[i] = read();
+        buf[i] = read_byte();
 }
 
 //
@@ -314,9 +293,9 @@ void OneWire::select(const uint8_t rom[8])
 {
     uint8_t i;
 
-    write(0x55);    // Choose ROM
+    write_byte(0x55);    // Choose ROM
     for (i = 0; i < 8; i++)
-        write(rom[i]);
+        write_byte(rom[i]);
 }
 
 //
@@ -325,7 +304,7 @@ void OneWire::select(const uint8_t rom[8])
 //
 void OneWire::skip()
 {
-    write(0xCC);    // Skip ROM
+    write_byte(0xCC);    // Skip ROM
 }
 
 /**
@@ -336,11 +315,7 @@ void OneWire::skip()
  */
 void OneWire::depower()
 {
-#if defined(TARGET_STM)
-    wire = 1;
-#else
-    wire.input();
-#endif
+    INPUT();
 }
 
 #if ONEWIRE_SEARCH
@@ -422,7 +397,7 @@ uint8_t OneWire::search(uint8_t* newAddr)
         }
 
         // issue the search command
-        write(0xF0);
+        write_byte(0xF0);
 
         // loop to do the search
         do {
@@ -530,3 +505,6 @@ uint8_t OneWire::crc8(const uint8_t* addr, uint8_t len)
     return crc;
 }
 #endif
+
+            
+
