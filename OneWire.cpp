@@ -126,9 +126,7 @@ sample code bearing this copyright.
 OneWire::OneWire(PinName pin) :
     DigitalInOut(pin)
 {
-    timer.stop();
-    timer.reset();
-    MODE(); // set mode either PullUp or OpenDrain
+    MODE(); // set mode either PullUp or OpenDrain for STM
 #if ONEWIRE_SEARCH
     reset_search();
 #endif
@@ -152,7 +150,7 @@ uint8_t OneWire::reset(void)
         if (--retries == 0)
             return 0;
         wait_us(2);
-    } while (READ() != 1);
+    } while (READ() == 0);
 
     OUTPUT();
     WRITE(0);
