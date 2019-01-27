@@ -115,23 +115,11 @@ sample code bearing this copyright.
 */
 #include "OneWire.h"
 
-#if defined(TARGET_STM)
-    #define MODE()      mode(OpenDrain)
-    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
-    #define OUTPUT()    // configured as output in the constructor and stays output forever
-    #define READ()      ((*gpio.reg_in & gpio.mask) ? 1 : 0)
-    #define WRITE(x)    write(x)
-#else
-    #define MODE()      mode(PullUp)
-    #define INPUT()     input()
-    #define OUTPUT()    output()
-    #define READ()      read()
-    #define WRITE(x)    write(x)
-#endif
-
 /**
- * @brief
- * @note
+ * @brief   Constructs a OneWire object.
+ * @note    GPIO is configured as output and an internal pull up resistor is connected.
+ *          But because for STM chips it takes very long time to change from output
+ *          to input an open drain mode is used rather and the GPIO remains output forever.
  * @param
  * @retval
  */
@@ -140,20 +128,19 @@ OneWire::OneWire(PinName pin) :
 {
     timer.stop();
     timer.reset();
-    output();   // configure as output
-    MODE();     // set mode PullUp/OpenDrain
+    MODE(); // set mode either PullUp or OpenDrain
 #if ONEWIRE_SEARCH
     reset_search();
 #endif
 }
 
-// Perform the onewire reset function.  We will wait up to 250uS for
-// the bus to come high, if it doesn't then it is broken or shorted
-// and we return a 0;
-//
-// Returns 1 if a device asserted a presence pulse, 0 otherwise.
-
-//
+/**
+ * @brief   Performs the onewire reset function.
+ * @note    We will wait up to 250uS for the bus to come high, 
+ *          if it doesn't then it is broken or shorted and we return a 0;
+ * @param
+ * @retval  1 if a device asserted a presence pulse, 0 otherwise.
+ */
 uint8_t OneWire::reset(void)
 {
     uint8_t r;
@@ -177,11 +164,12 @@ uint8_t OneWire::reset(void)
     return r;
 }
 
-//
-// Write a bit. Port and bit is used to cut lookup time and provide
-// more certain timing.
-
-//
+/**
+ * @brief   Writes a bit.
+ * @note    GPIO registers are used for STM chips to cut time.
+ * @param
+ * @retval
+ */
 void OneWire::write_bit(uint8_t v)
 {
     OUTPUT();
@@ -199,24 +187,24 @@ void OneWire::write_bit(uint8_t v)
     }
 }
 
-//
-// Read a bit. Port and bit is used to cut lookup time and provide
-// more certain timing.
-
-//
+/**
+ * @brief   Reads a bit.
+ * @note    GPIO registers are used for STM chips to cut time.
+ * @param
+ * @retval
+ */
 uint8_t OneWire::read_bit(void)
 {
     uint8_t r;
     int     t;
 
     OUTPUT();
-    WRITE(0);
     timer.start();
+    WRITE(0);
     INPUT();
     t = timer.read_us();
     if (t < 7)
         wait_us(7 - t);
-    timer.reset();
     r = READ();
     timer.stop();
     timer.reset();
@@ -224,14 +212,16 @@ uint8_t OneWire::read_bit(void)
     return r;
 }
 
-//
-// Write a byte. The writing code uses the active drivers to raise the
-// pin high, if you need power after the write (e.g. DS18S20 in
-// parasite power mode) then set 'power' to 1, otherwise the pin will
-// go tri-state at the end of the write to avoid heating in a short or
-// other mishap.
-
-//
+/**
+ * @brief   Writes a byte.
+ * @note    The writing code uses the active drivers to raise the
+            pin high, if you need power after the write (e.g. DS18S20 in
+            parasite power mode) then set 'power' to 1, otherwise the pin will
+            go tri-state at the end of the write to avoid heating in a short or
+            other mishap.
+ * @param
+ * @retval
+ */
 void OneWire::write_byte(uint8_t v, uint8_t power /* = 0 */ )
 {
     uint8_t bitMask;
@@ -243,7 +233,7 @@ void OneWire::write_byte(uint8_t v, uint8_t power /* = 0 */ )
 }
 
 /**
- * @brief
+ * @brief   Writes bytes.
  * @note
  * @param
  * @retval
@@ -256,10 +246,12 @@ void OneWire::write_bytes(const uint8_t* buf, uint16_t count, bool power /* = 0 
         INPUT();
 }
 
-//
-// Read a byte
-
-//
+/**
+ * @brief   Reads a byte.
+ * @note
+ * @param
+ * @retval
+ */
 uint8_t OneWire::read_byte()
 {
     uint8_t bitMask;
@@ -274,7 +266,7 @@ uint8_t OneWire::read_byte()
 }
 
 /**
- * @brief
+ * @brief   Reads bytes.
  * @note
  * @param
  * @retval
@@ -285,30 +277,34 @@ void OneWire::read_bytes(uint8_t* buf, uint16_t count)
         buf[i] = read_byte();
 }
 
-//
-// Do a ROM select
-
-//
+/**
+ * @brief   Selects ROM.
+ * @note
+ * @param
+ * @retval
+ */
 void OneWire::select(const uint8_t rom[8])
 {
     uint8_t i;
 
-    write_byte(0x55);    // Choose ROM
+    write_byte(0x55);   // Choose ROM
     for (i = 0; i < 8; i++)
         write_byte(rom[i]);
 }
 
-//
-// Do a ROM skip
-
-//
+/**
+ * @brief   Skips ROM select.
+ * @note
+ * @param
+ * @retval
+ */
 void OneWire::skip()
 {
-    write_byte(0xCC);    // Skip ROM
+    write_byte(0xCC);   // Skip ROM
 }
 
 /**
- * @brief
+ * @brief   Unpowers the chip.
  * @note
  * @param
  * @retval
@@ -321,10 +317,13 @@ void OneWire::depower()
 #if ONEWIRE_SEARCH
 //
 
-// You need to use this function to start a search again from the beginning.
-// You do not need to do it for the first search, though you could.
-
-//
+/**
+ * @brief   Resets the search state.
+ * @note    We need to use this function to start a search again from the beginning.
+ *          We do not need to do it for the first search, though we could.
+ * @param
+ * @retval
+ */
 void OneWire::reset_search()
 {
     // reset the search state
@@ -338,10 +337,12 @@ void OneWire::reset_search()
     }
 }
 
-// Setup the search to find the device type 'family_code' on the next call
-// to search(*newAddr) if it is present.
-
-//
+/**
+ * @brief   Sets the search state to find SearchFamily type devices.
+ * @note
+ * @param
+ * @retval
+ */
 void OneWire::target_search(uint8_t family_code)
 {
     // set the search state to find SearchFamily type devices
@@ -353,23 +354,24 @@ void OneWire::target_search(uint8_t family_code)
     LastDeviceFlag = false;
 }
 
-//
-// Perform a search. If this function returns a '1' then it has
-// enumerated the next device and you may retrieve the ROM from the
-// OneWire::address variable. If there are no devices, no further
-// devices, or something horrible happens in the middle of the
-// enumeration then a 0 is returned.  If a new device is found then
-// its address is copied to newAddr.  Use OneWire::reset_search() to
-// start over.
-//
-// --- Replaced by the one from the Dallas Semiconductor web site ---
-//--------------------------------------------------------------------------
-// Perform the 1-Wire Search Algorithm on the 1-Wire bus using the existing
-// search state.
-// Return true  : device found, ROM number in ROM_NO buffer
-//        false : device not found, end of search
-
-//
+/**
+ * @brief   Performs a search.
+ * @note    Perform a search. If this function returns a '1' then it has
+            enumerated the next device and you may retrieve the ROM from the
+            OneWire::address variable. If there are no devices, no further
+            devices, or something horrible happens in the middle of the
+            enumeration then a 0 is returned.  If a new device is found then
+            its address is copied to newAddr.  Use OneWire::reset_search() to
+            start over.
+            
+            --- Replaced by the one from the Dallas Semiconductor web site ---
+            -------------------------------------------------------------------------
+            Perform the 1-Wire Search Algorithm on the 1-Wire bus using the existing
+            search state.
+ * @param
+ * @retval  true  : device found, ROM number in ROM_NO buffer
+ *          false : device not found, end of search
+ */
 uint8_t OneWire::search(uint8_t* newAddr)
 {
     uint8_t         id_bit_number;
@@ -480,13 +482,16 @@ uint8_t OneWire::search(uint8_t* newAddr)
     return search_result;
 }
 #endif
-#if ONEWIRE_CRC
-// The 1-Wire CRC scheme is described in Maxim Application Note 27:
-
-// "Understanding and Using Cyclic Redundancy Checks with Maxim iButton Products"
-// Compute a Dallas Semiconductor 8 bit CRC directly.
-
 //
+#if ONEWIRE_CRC
+//
+/**
+ * @brief   Computes a Dallas Semiconductor 8 bit CRC directly.
+ * @note    The 1-Wire CRC scheme is described in Maxim Application Note 27:
+            "Understanding and Using Cyclic Redundancy Checks with Maxim iButton Products"
+ * @param
+ * @retval
+ */
 uint8_t OneWire::crc8(const uint8_t* addr, uint8_t len)
 {
     uint8_t crc = 0;
@@ -505,6 +510,3 @@ uint8_t OneWire::crc8(const uint8_t* addr, uint8_t len)
     return crc;
 }
 #endif
-
-            
-

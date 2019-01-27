@@ -4,6 +4,21 @@
 #include <inttypes.h>
 #include <mbed.h>
 
+#if defined(TARGET_STM)
+    #define MODE(x)      output(); \
+                         mode(OpenDrain)
+    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
+    #define OUTPUT()    // configured as output in the constructor and stays output forever
+    #define READ()      ((*gpio.reg_in & gpio.mask) ? 1 : 0)
+    #define WRITE(x)    write(x)
+#else
+    #define MODE()      mode(PullUp)
+    #define INPUT()     input()
+    #define OUTPUT()    output()
+    #define READ()      read()
+    #define WRITE(x)    write(x)
+#endif
+
 // You can exclude certain features from OneWire.  In theory, this
 // might save some space.  In practice, the compiler automatically
 // removes unused code (technically, the linker, using -fdata-sections
@@ -140,5 +155,3 @@ public:
 };
 
 #endif
-
-            
