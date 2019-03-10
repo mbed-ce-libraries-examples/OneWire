@@ -115,6 +115,7 @@ sample code bearing this copyright.
 */
 #include "OneWire.h"
 
+
 /**
  * @brief   Constructs a OneWire object.
  * @note    GPIO is configured as output and an internal pull up resistor is connected.
@@ -126,7 +127,8 @@ sample code bearing this copyright.
 OneWire::OneWire(PinName pin) :
     DigitalInOut(pin)
 {
-    MODE(); // set mode either PullUp or OpenDrain for STM
+    MODE(); // set mode to either OpenDrain for STM or PullUp for others
+    INIT_WAIT;
 #if ONEWIRE_SEARCH
     reset_search();
 #endif
@@ -141,25 +143,17 @@ OneWire::OneWire(PinName pin) :
  */
 uint8_t OneWire::reset(void)
 {
-    uint8_t r;
-    uint8_t retries = 125;
-
-    INPUT();
-    // wait until the wire is high... just in case
-    do {
-        if (--retries == 0)
-            return 0;
-        wait_us(2);
-    } while (READ() == 0);
+    uint8_t present;
 
     OUTPUT();
-    WRITE(0);
-    wait_us(480);
-    INPUT();
-    wait_us(65);
-    r = !READ();
-    wait_us(420);
-    return r;
+    WRITE(0);           // pull down the 1-wire bus do create reset pulse
+    WAIT_US(500);       // wait at least 480 us
+    INPUT();            // release the 1-wire bus and go into receive mode
+    WAIT_US(90);        // DS1820 waits about 15 to 60 us and generates a 60 to 240 us presence pulse
+    present = !READ();  // read the presence pulse
+    WAIT_US(420);
+    
+    return present;
 }
 
 /**
@@ -173,15 +167,15 @@ void OneWire::write_bit(uint8_t v)
     OUTPUT();
     if (v & 1) {
         WRITE(0);   // drive output low
-        wait_us(1);
+        WAIT_US(1);
         WRITE(1);   // drive output high
-        wait_us(60);
+        WAIT_US(60);
     }
     else {
         WRITE(0);   // drive output low
-        wait_us(60);
+        WAIT_US(60);
         WRITE(1);   // drive output high
-        wait_us(1);
+        WAIT_US(1);
     }
 }
 
@@ -193,20 +187,22 @@ void OneWire::write_bit(uint8_t v)
  */
 uint8_t OneWire::read_bit(void)
 {
+    const int SAMPLE_POINT = 10;
     uint8_t r;
     int     t;
 
     OUTPUT();
-    timer.start();
     WRITE(0);
+    timer.start();
     INPUT();
     t = timer.read_us();
-    if (t < 7)
-        wait_us(7 - t);
+    if (t < SAMPLE_POINT)
+        WAIT_US(SAMPLE_POINT - t);
     r = READ();
     timer.stop();
     timer.reset();
-    wait_us(55);
+    WAIT_US(55);
+    //printf("t = %d\r\n", t);
     return r;
 }
 
@@ -384,7 +380,7 @@ uint8_t OneWire::search(uint8_t* newAddr)
     rom_byte_number = 0;
     rom_byte_mask = 1;
     search_result = 0;
-
+    
     // if the last call was not the last one
     if (!LastDeviceFlag) {
         // 1-Wire reset

@@ -5,8 +5,8 @@
 #include <mbed.h>
 
 #if defined(TARGET_STM)
-    #define MODE()       output(); \
-                         mode(OpenDrain)
+    #define MODE()      output(); \
+                        mode(OpenDrain)
     #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
     #define OUTPUT()    // configured as output in the constructor and stays like that forever
     #define READ()      ((*gpio.reg_in & gpio.mask) != 0)
@@ -17,6 +17,28 @@
     #define OUTPUT()    output()
     #define READ()      read()
     #define WRITE(x)    write(x)
+#endif
+
+#ifdef TARGET_NORDIC
+//NORDIC targets (NRF) use software delays since their ticker uses a 32kHz clock
+    static uint32_t loops_per_us = 0;
+    
+    #define INIT_WAIT   init_soft_delay()
+    #define WAIT_US(x)  for(int cnt = 0; cnt < (x * loops_per_us) >> 5; cnt++) {__NOP(); __NOP(); __NOP();}
+    
+void init_soft_delay( void ) {
+    if (loops_per_us == 0) {
+        loops_per_us = 1;
+        Timer timey; 
+        timey.start();
+        ONEWIRE_DELAY_US(320000);                     
+        timey.stop();
+        loops_per_us = (320000 + timey.read_us() / 2) / timey.read_us();  
+    }
+}
+#else
+    #define INIT_WAIT
+    #define WAIT_US(x)  wait_us(x)
 #endif
 
 // You can exclude certain features from OneWire.  In theory, this
@@ -155,3 +177,5 @@ public:
 };
 
 #endif
+
+            
