@@ -7,10 +7,18 @@
 #if defined(TARGET_STM)
     #define MODE()      output(); \
                         mode(OpenDrain)
-    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
     #define OUTPUT()    // configured as output in the constructor and stays like that forever
+#if defined(TARGET_STM32L072xx)
+    #define PORT        ((GPIO_TypeDef *)(GPIOA_BASE + 0x0400 * STM_PORT(gpio.pin)))
+    #define PINMASK     (1 << STM_PIN(gpio.pin))
+    #define INPUT()     (PORT->MODER &= ~(GPIO_MODER_MODE0_0 << (STM_PIN(gpio.pin) * 2)))                              
+    #define READ()      ((PORT->IDR & gpio.mask) != 0)
+    #define WRITE(x)    (x == 1 ? PORT->BSRR = PINMASK : PORT->BRR = PINMASK)
+#else
+    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
     #define READ()      ((*gpio.reg_in & gpio.mask) != 0)
     #define WRITE(x)    write(x)
+#endif
 #else
     #define MODE()      mode(PullUp)
     #define INPUT()     input()
