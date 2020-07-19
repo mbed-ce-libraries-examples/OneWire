@@ -200,9 +200,10 @@ uint8_t OneWire::read_bit(void)
         WAIT_US(SAMPLE_POINT - t);
     r = READ();
     timer.stop();
-    timer.reset();
     WAIT_US(55);
-    //printf("t = %d\r\n", t);
+    //printf("t  = %d\r\n", t);
+    //printf("t1 = %d\r\n", timer.read_us() - t);
+    timer.reset();
     return r;
 }
 
