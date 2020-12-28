@@ -3,45 +3,36 @@
 
 #include <inttypes.h>
 #include <mbed.h>
+#include "SerialBase.h"
 
 #if defined(TARGET_STM)
-    #define MODE()      output(); \
-                        mode(OpenDrain)
-    #define OUTPUT()    // configured as output in the constructor and stays like that forever
-#if defined(TARGET_STM32L072xx)
-    #define PORT        ((GPIO_TypeDef *)(GPIOA_BASE + 0x0400 * STM_PORT(gpio.pin)))
-    #define PINMASK     (1 << STM_PIN(gpio.pin))
-    #define INPUT()     (PORT->MODER &= ~(GPIO_MODER_MODE0_0 << (STM_PIN(gpio.pin) * 2)))                              
-    #define READ()      ((PORT->IDR & gpio.mask) != 0)
-    #define WRITE(x)    (x == 1 ? PORT->BSRR = PINMASK : PORT->BRR = PINMASK)
+    #define MODE()   _gpio->output(); \
+                     _gpio->mode(OpenDrain)
+    #define OUTPUT() // configured as output in the constructor and stays like that forever
 #else
-    #define INPUT()     (*gpio.reg_set = gpio.mask) // write 1 to open drain
-    #define READ()      ((*gpio.reg_in & gpio.mask) != 0)
-    #define WRITE(x)    write(x)
+    #define MODE()   _gpio->mode(PullUp)
+    #define OUTPUT() _gpio->output()
 #endif
-#else
-    #define MODE()      mode(PullUp)
-    #define INPUT()     input()
-    #define OUTPUT()    output()
-    #define READ()      read()
-    #define WRITE(x)    write(x)
-#endif
+
+#define INPUT()      _gpio->input()
+#define READ()       _gpio->read()
+#define WRITE(x)     _gpio->write(x)
 
 #ifdef TARGET_NORDIC
 //NORDIC targets (NRF) use software delays since their ticker uses a 32kHz clock
     static uint32_t loops_per_us = 0;
-    
+
     #define INIT_WAIT   init_soft_delay()
     #define WAIT_US(x)  for(int cnt = 0; cnt < (x * loops_per_us) >> 5; cnt++) {__NOP(); __NOP(); __NOP();}
-    
+
 void init_soft_delay( void ) {
     if (loops_per_us == 0) {
         loops_per_us = 1;
-        Timer timey; 
+        Timer timey;
         timey.start();
-        ONEWIRE_DELAY_US(320000);                     
+        ONEWIRE_DELAY_US(320000);
         timey.stop();
-        loops_per_us = (320000 + timey.read_us() / 2) / timey.read_us();  
+        loops_per_us = (320000 + timey.read_us() / 2) / timey.read_us();
     }
 }
 #else
@@ -69,10 +60,25 @@ void init_soft_delay( void ) {
 #define ONEWIRE_CRC 1
 #endif
 
-class OneWire : public DigitalInOut
+class UART :
+    public  SerialBase,
+    private NonCopyable<UART>
 {
-    int _sample_point_us;
-    int _out_to_in_transition_us;
+    UART(const UART&);
+public:
+    UART(PinName tx, PinName rx, int baud) : SerialBase(tx, rx, baud) {}
+
+    using SerialBase::_base_getc;
+    using SerialBase::_base_putc;
+};
+
+class OneWire
+{
+    DigitalInOut*   _gpio;
+    UART*           _uart;
+
+    int _samplePoint_us;
+    int _outToInTransition_us;
 
 #if ONEWIRE_SEARCH
     // global search state
@@ -83,7 +89,13 @@ class OneWire : public DigitalInOut
 #endif
 
 public:
-    OneWire(PinName pin, int sample_point_us = 13);
+
+    // Constructors
+    OneWire(PinName gpioPin, int samplePoint_us = 13);          // GPIO
+    OneWire(PinName txPin, PinName rxPin, int baud = 115200);   // UART
+
+    // Destructor
+    ~OneWire();
 
     // Perform a 1-Wire reset cycle. Returns 1 if a device responds
     // with a presence pulse.  Returns 0 if there is no device or the
@@ -157,8 +169,8 @@ public:
     //    ReadBytes(net, buf+3, 10);  // Read 6 data bytes, 2 0xFF, 2 CRC16
     //    if (!CheckCRC16(buf, 11, &buf[11])) {
     //        // Handle error.
-    //    }     
-    //          
+    //    }
+    //
     // @param input - Array of bytes to checksum.
     // @param len - How many bytes to use.
     // @param inverted_crc - The two CRC16 bytes in the received data.
@@ -186,5 +198,3 @@ public:
 };
 
 #endif
-
-            

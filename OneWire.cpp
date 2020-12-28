@@ -115,7 +115,6 @@ sample code bearing this copyright.
 */
 #include "OneWire.h"
 
-
 /**
  * @brief   Constructs a OneWire object.
  * @note    GPIO is configured as output and an internal pull up resistor is connected.
@@ -124,24 +123,29 @@ sample code bearing this copyright.
  * @param
  * @retval
  */
-OneWire::OneWire(PinName pin, int sample_point_us /* = 13 */) :
-    DigitalInOut(pin),
-    _sample_point_us(sample_point_us)
+OneWire::OneWire(PinName gpioPin, int samplePoint_us /*= 13*/) :
+    _gpio(new DigitalInOut(gpioPin)),
+    _uart(NULL),
+    _samplePoint_us(samplePoint_us)
 {
-    Timer timer;
+    Timer   timer;
 
-    MODE(); // set mode to either OpenDrain for STM or PullUp for others
+    MODE();     // set mode to either OpenDrain for STM or PullUp for others
 
     // Measure bus transition time from ouput to input
     timer.reset();
-    OUTPUT();       // set as output
-    WRITE(0);       // pull the line down
+    OUTPUT();   // set as output
+    WRITE(0);   // pull the line down
     timer.start();
-    INPUT();        // set as input (and release the bus)
+    INPUT();    // set as input (and release the bus)
     timer.stop();
-    _out_to_in_transition_us = timer.read_us();
+#if (MBED_MAJOR_VERSION > 5)
+    _outToInTransition_us = timer.elapsed_time().count();
+#else
+    _outToInTransition_us = timer.read_us();
+#endif
 
-    MBED_ASSERT(_out_to_in_transition_us < _sample_point_us);
+    MBED_ASSERT(_outToInTransition_us < _samplePoint_us);
 
     INIT_WAIT;
 #if ONEWIRE_SEARCH
@@ -150,8 +154,53 @@ OneWire::OneWire(PinName pin, int sample_point_us /* = 13 */) :
 }
 
 /**
+ * @brief   Constructs a OneWire object.
+ * @note    UART is used to implement a 1-Wire Bus Master according to Maxim Integrated tutorial
+ *          https://www.maximintegrated.com/en/design/technical-documents/tutorials/2/214.html
+ *          In addition to the 4.7k Ohm resitor between the 1-wire data bus/line and the +3.3V pin,
+ *          a 470 Ohm resitor shall be tied to the UART's tx and rx pin. UART's rx pin is then used
+ *          as 1-wire data bus/line.
+ * 
+ *           ----------------
+ *          |                |   ----------------------->  +3.3V
+ *          |   MBED BOARD   |  |
+ *          |                |  |   ------
+ *          |           3.3V |--o--| 4.7k |-------   
+ *          |                |      ------        |
+ *          |                |      ------        |
+ *          |        UART TX |-----|  470 |---    |   
+ *          |                |      ------    |   |
+ *          |                |                |   |
+ *          |        UART RX |----------------o---o----->  1-wire bus/line  
+ *          |                |
+ *          |                |
+ *          |            GND |-------------------------->  GND
+ *          |                |
+ *           ----------------
+ * 
+ * @param
+ * @retval
+ */
+OneWire::OneWire(PinName txPin, PinName rxPin, int baud /*=115200*/) :
+    _gpio(NULL),
+    _uart(new UART(txPin, rxPin, baud))
+{
+#if ONEWIRE_SEARCH
+    reset_search();
+#endif
+}
+
+OneWire::~OneWire()
+{
+    if (_gpio != NULL)
+        delete _gpio;
+    if (_uart != NULL)
+        delete _uart;
+}
+
+/**
  * @brief   Performs the onewire reset function.
- * @note    We will wait up to 250uS for the bus to come high, 
+ * @note    We will wait up to 250uS for the bus to come high,
  *          if it doesn't then it is broken or shorted and we return a 0;
  * @param
  * @retval  1 if a device asserted a presence pulse, 0 otherwise.
@@ -160,14 +209,34 @@ uint8_t OneWire::reset(void)
 {
     uint8_t present;
 
-    OUTPUT();
-    WRITE(0);           // pull down the 1-wire bus do create reset pulse
-    WAIT_US(500);       // wait at least 480 us
-    INPUT();            // release the 1-wire bus and go into receive mode
-    WAIT_US(90);        // DS1820 waits about 15 to 60 us and generates a 60 to 240 us presence pulse
-    present = !READ();  // read the presence pulse
-    WAIT_US(420);
-    
+    if (_gpio != NULL) {
+        OUTPUT();
+        WRITE(0);           // pull down the 1-wire bus do create reset pulse
+        WAIT_US(500);       // wait at least 480 us
+        INPUT();            // release the 1-wire bus and go into receive mode
+        WAIT_US(90);        // DS1820 waits about 15 to 60 us and generates a 60 to 240 us presence pulse
+        present = !READ();  // read the presence pulse
+        WAIT_US(420);
+    }
+    else {
+        _uart->baud(9600);
+        #if (MBED_MAJOR_VERSION > 5)
+            ThisThread::sleep_for(10ms);
+        #else
+            wait_ms(10);
+        #endif
+        _uart->_base_putc(0xF0);
+        present = _uart->_base_getc();
+        wait_us(420);
+        _uart->baud(115200);
+        #if (MBED_MAJOR_VERSION > 5)
+            ThisThread::sleep_for(10ms);
+        #else
+            wait_ms(10);
+#endif
+        present = (present >= 0x10);
+    }
+
     return present;
 }
 
@@ -179,18 +248,29 @@ uint8_t OneWire::reset(void)
  */
 void OneWire::write_bit(uint8_t v)
 {
-    OUTPUT();
     if (v & 1) {
-        WRITE(0);   // drive output low
-        WAIT_US(1);
-        WRITE(1);   // drive output high
-        WAIT_US(60);
+        if (_gpio != NULL) {
+            OUTPUT();
+            WRITE(0);   // drive output low
+            WAIT_US(1);
+            WRITE(1);   // drive output high
+            WAIT_US(60);
+        }
+        else {
+            _uart->_base_putc(0xFF);
+        }
     }
     else {
-        WRITE(0);   // drive output low
-        WAIT_US(60);
-        WRITE(1);   // drive output high
-        WAIT_US(1);
+        if (_gpio != NULL) {
+            OUTPUT();
+            WRITE(0);   // drive output low
+            WAIT_US(60);
+            WRITE(1);   // drive output high
+            WAIT_US(1);
+        }
+        else {
+            _uart->_base_putc(0x00);
+        }
     }
 }
 
@@ -204,12 +284,24 @@ uint8_t OneWire::read_bit(void)
 {
     uint8_t r;
 
-    OUTPUT();
-    WRITE(0);
-    INPUT();
-    wait_us(_sample_point_us - _out_to_in_transition_us);    // wait till sample point
-    r = READ();
-    WAIT_US(55);
+    if (_gpio != NULL) {
+        OUTPUT();
+        WRITE(0);
+        INPUT();
+        wait_us(_samplePoint_us - _outToInTransition_us);   // wait till sample point
+        r = READ();
+        WAIT_US(55);
+    }
+    else {
+        _uart->_base_putc(0xFF);
+        do {
+            r = _uart->_base_getc();
+            wait_us(100);
+        } while(_uart->readable());
+
+        r = r & 0x01;
+    }
+
     return r;
 }
 
@@ -229,7 +321,7 @@ void OneWire::write_byte(uint8_t v, uint8_t power /* = 0 */ )
 
     for (bitMask = 0x01; bitMask; bitMask <<= 1)
         write_bit((bitMask & v) ? 1 : 0);
-    if (!power)
+    if ((!power) && (_gpio != NULL))
         INPUT();
 }
 
@@ -243,7 +335,7 @@ void OneWire::write_bytes(const uint8_t* buf, uint16_t count, bool power /* = 0 
 {
     for (uint16_t i = 0; i < count; i++)
         write_byte(buf[i]);
-    if (!power)
+    if ((!power) && (_gpio != NULL))
         INPUT();
 }
 
@@ -312,7 +404,8 @@ void OneWire::skip()
  */
 void OneWire::depower()
 {
-    INPUT();
+    if (_gpio != NULL)
+        INPUT();
 }
 
 #if ONEWIRE_SEARCH
@@ -328,6 +421,7 @@ void OneWire::depower()
 void OneWire::reset_search()
 {
     // reset the search state
+
     LastDiscrepancy = 0;
     LastDeviceFlag = false;
     LastFamilyDiscrepancy = 0;
@@ -347,6 +441,7 @@ void OneWire::reset_search()
 void OneWire::target_search(uint8_t family_code)
 {
     // set the search state to find SearchFamily type devices
+
     ROM_NO[0] = family_code;
     for (uint8_t i = 1; i < 8; i++)
         ROM_NO[i] = 0;
@@ -364,7 +459,7 @@ void OneWire::target_search(uint8_t family_code)
             enumeration then a 0 is returned.  If a new device is found then
             its address is copied to newAddr.  Use OneWire::reset_search() to
             start over.
-            
+
             --- Replaced by the one from the Dallas Semiconductor web site ---
             -------------------------------------------------------------------------
             Perform the 1-Wire Search Algorithm on the 1-Wire bus using the existing
@@ -382,12 +477,13 @@ uint8_t OneWire::search(uint8_t* newAddr)
     unsigned char   rom_byte_mask, search_direction;
 
     // initialize for search
+
     id_bit_number = 1;
     last_zero = 0;
     rom_byte_number = 0;
     rom_byte_mask = 1;
     search_result = 0;
-    
+
     // if the last call was not the last one
     if (!LastDeviceFlag) {
         // 1-Wire reset
@@ -403,7 +499,8 @@ uint8_t OneWire::search(uint8_t* newAddr)
         write_byte(0xF0);
 
         // loop to do the search
-        do {
+        do
+        {
             // read a bit and its complement
             id_bit = read_bit();
             cmp_id_bit = read_bit();
@@ -456,6 +553,7 @@ uint8_t OneWire::search(uint8_t* newAddr)
                 }
             }
         } while (rom_byte_number < 8);
+
         // loop until through all ROM bytes 0-7
         // if the search was successful then
         if (!(id_bit_number < 65)) {
@@ -486,6 +584,7 @@ uint8_t OneWire::search(uint8_t* newAddr)
 //
 #if ONEWIRE_CRC
 //
+
 /**
  * @brief   Computes a Dallas Semiconductor 8 bit CRC directly.
  * @note    The 1-Wire CRC scheme is described in Maxim Application Note 27:
