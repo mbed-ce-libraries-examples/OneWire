@@ -5,18 +5,11 @@
 #include <mbed.h>
 #include "SerialBase.h"
 
-#if defined(TARGET_STM)
-    #define MODE()   _gpio->output(); \
-                     _gpio->mode(OpenDrain)
-    #define OUTPUT() // configured as output in the constructor and stays like that forever
-#else
-    #define MODE()   _gpio->mode(PullUp)
-    #define OUTPUT() _gpio->output()
-#endif
-
-#define INPUT()      _gpio->input()
-#define READ()       _gpio->read()
-#define WRITE(x)     _gpio->write(x)
+#define MODE()      _gpio->mode(PullUp)
+#define INPUT()     _gpio->input()
+#define OUTPUT()    _gpio->output()
+#define READ()      _gpio->read()
+#define WRITE(x)    _gpio->write(x)
 
 #ifdef TARGET_NORDIC
 //NORDIC targets (NRF) use software delays since their ticker uses a 32kHz clock
@@ -198,3 +191,5 @@ public:
 };
 
 #endif
+
+

@@ -118,9 +118,27 @@ sample code bearing this copyright.
 /**
  * @brief   Constructs a OneWire object.
  * @note    GPIO is configured as output and an internal pull up resistor is connected.
- *          But because for STM chips it takes very long time to change from output
- *          to input an open drain mode is used rather and the GPIO remains output forever.
- * @param
+ *          An addition 4.7k Ohm resistor can connected between the 1-wire data bus/line
+ *          and the +3.3V pin,
+ *          
+ *           ----------------
+ *          |                |   ----------------------->  +3.3V
+ *          |   MBED BOARD   |  |
+ *          |                |  |   ------
+ *          |          +3.3V |--o--| 4.7k |-------
+ *          |                |      ------        |
+ *          |                |                    |
+ *          |                |                    |
+ *          |                |                    |
+ *          |                |                    |
+ *          |           GPIO |--------------------o----->  1-wire bus/line
+ *          |                |
+ *          |                |
+ *          |            GND |-------------------------->  GND
+ *          |                |
+ *           ----------------
+ *
+ * @param   gpioPin GPIO pin to be used as 1-wire bus/line
  * @retval
  */
 OneWire::OneWire(PinName gpioPin, int samplePoint_us /*= 13*/) :
@@ -155,30 +173,33 @@ OneWire::OneWire(PinName gpioPin, int samplePoint_us /*= 13*/) :
 
 /**
  * @brief   Constructs a OneWire object.
- * @note    UART is used to implement a 1-Wire Bus Master according to Maxim Integrated tutorial
+ * @note    UART is used to implement a 1-Wire Bus Master according to Maxim Integrated application note
+ *    
  *          https://www.maximintegrated.com/en/design/technical-documents/tutorials/2/214.html
- *          In addition to the 4.7k Ohm resitor between the 1-wire data bus/line and the +3.3V pin,
- *          a 470 Ohm resitor shall be tied to the UART's tx and rx pin. UART's rx pin is then used
+ *          
+ *          In addition to the 4.7k Ohm resistor between the 1-wire data bus/line and the +3.3V pin,
+ *          a 470 Ohm resistor shall be tied to the UART's tx and rx pin. UART's rx pin is then used
  *          as 1-wire data bus/line.
- * 
+ *          
  *           ----------------
  *          |                |   ----------------------->  +3.3V
  *          |   MBED BOARD   |  |
  *          |                |  |   ------
- *          |           3.3V |--o--| 4.7k |-------   
+ *          |          +3.3V |--o--| 4.7k |-------
  *          |                |      ------        |
  *          |                |      ------        |
- *          |        UART TX |-----|  470 |---    |   
+ *          |        UART TX |-----|  470 |---    |
  *          |                |      ------    |   |
  *          |                |                |   |
- *          |        UART RX |----------------o---o----->  1-wire bus/line  
+ *          |        UART RX |----------------o---o----->  1-wire bus/line
  *          |                |
  *          |                |
  *          |            GND |-------------------------->  GND
  *          |                |
  *           ----------------
- * 
- * @param
+ *
+ * @param   txPin   UART's Tx pin name
+ * @param   rxPin   UART's Rx pin name
  * @retval
  */
 OneWire::OneWire(PinName txPin, PinName rxPin, int baud /*=115200*/) :
