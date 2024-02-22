@@ -242,7 +242,7 @@ uint8_t OneWire::reset(void)
     else {
         _uart->baud(9600);
         #if (MBED_MAJOR_VERSION > 5)
-            ThisThread::sleep_for(10ms);
+            thread_sleep_for(10);
         #else
             wait_ms(10);
         #endif
@@ -251,7 +251,7 @@ uint8_t OneWire::reset(void)
         wait_us(420);
         _uart->baud(115200);
         #if (MBED_MAJOR_VERSION > 5)
-            ThisThread::sleep_for(10ms);
+            thread_sleep_for(10);
         #else
             wait_ms(10);
 #endif
